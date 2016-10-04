@@ -1,0 +1,147 @@
+We want to acheve the following behaviour: we have a function \(g\colon 
+\mathbf{Z}\to \mathbf{Z}\) such that \(g(x) \mapsto x^2\), we want a function 
+\(f = g\circ g\).
+The function \(g\) can easily be implemented as
+<<example functions>>=
+int square(int n)
+{
+	return n*n;
+}
+@ We also add the following other example functions
+<<example functions>>=
+int successor(int n)
+{
+  return n+1;
+}
+
+int predecessor(int n)
+{
+  return n-1;
+}
+@
+
+Then we want to be able to implement the composition as follows.
+We note that we assume the domain and range to be the same, i.e.\ 
+\(\mathbf{Z}\) or [[int]].
+<<composition>>=
+composable_function<int> f = square;
+f = f.ball(square);
+f = f.ball(predecessor).ball(square).ball(successor);
+@
+
+To test that this actually works we can use the following example.
+<<test>>=
+<<composition>>
+std::cout
+  << "successor(2) = " << successor(2) << std::endl
+  << "square(successor(2)) = " << square(successor(2)) << std::endl
+  << "predecessor(square(successor(2))) = " <<
+    predecessor(square(successor(2))) << std::endl
+  << "square(predecessor(square(successor(2)))) = " <<
+    square(predecessor(square(successor(2)))) << std::endl
+  << "square(square(predecessor(square(successor(2))))) = " <<
+    square(square(predecessor(square(successor(2))))) << std::endl
+  << "f(2) = " << f(2) << std::endl;
+@ This requires us to include [[iostream]].
+<<includes>>=
+#include <iostream>
+@ We can see that the result is correct if \(f(2) = (((2+1)^2-1)^2)^2 = 4096\).
+
+The composition can be achived by a class which uses the [[std::function]] 
+class from the standard library.
+As stated above, we do this for the special case where the domain and range are
+the same sets.
+<<composable function class>>=
+template <
+  typename T,
+  class container = std::vector<std::function<T(T)>>
+>
+class composable_function {
+	private:
+    container functions;
+
+	public:
+    composable_function() {}
+    virtual ~composable_function() {}
+
+    <<copy constructors>>
+    <<assignment operators>>
+
+    <<the composition method>>
+    <<overloading of the functional operator>>
+};
+@ This requires the following includes:
+<<includes>>=
+#include <functional>
+#include <vector>
+@
+
+Now, we want to be able to create composable functions from
+\begin{enumerate}
+\item other composable functions,
+\item functions of type [[std::function]], and
+\item ordinary functions.
+\end{enumerate}
+To do this we have the following constructors.
+<<copy constructors>>=
+composable_function(const composable_function<T, container> &other)
+  : functions(other.functions) {}
+
+composable_function(std::function<T(T)> &f) {
+  functions.push_back(f);
+}
+
+composable_function(T f(T)) {
+  functions.push_back(f);
+}
+@ In a similar way we want to be able to use the assignment operator.
+Due to the above copy constructors we only need to overload the assignment 
+operator for other composable functions, as the other types can be converted 
+using the above constructors.
+<<assignment operators>>=
+virtual composable_function<T, container> &
+operator=(const composable_function<T, container> &other) {
+  functions = other.functions;
+  return *this;
+}
+@
+
+The way we want to do composition is by returning a new composable function as 
+the result.
+We do not want to modify the object itself as we might want to keep it intact, 
+e.g.\ we should be able to use a constant function in composition.
+<<the composition method>>=
+composable_function<T, container> ball(const std::function<T(T)> &func) const {
+  composable_function<T, container> new_f(*this);
+  new_f.functions.push_back(func);
+  return new_f;
+}
+@ Now we must write something like [[f = f.ball(g)]] instead of just 
+[[f.ball(g)]] to replace [[f]] with the new composition.
+
+We also want to be able to call this composable function.
+To do this we need the functional operator.
+When we call the composed function we want to call them in reversed order, 
+i.e.\ last added function first.
+<<overloading of the functional operator>>=
+virtual T operator()(const T &x) const {
+  T result = x;
+  for (auto it = functions.rbegin(); it != functions.rend(); it++)
+    result = (*it)(result);
+  return result;
+}
+@
+
+Finally we put this together in a compilable file.
+<<FunctionComposition.cpp>>=
+<<includes>>
+
+<<composable function class>>
+<<example functions>>
+
+int main(void)
+{
+  <<test>>
+  return 0;
+}
+@
